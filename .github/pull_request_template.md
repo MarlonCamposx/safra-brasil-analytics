@@ -1,24 +1,29 @@
-## Confluence Link
+## Summary
 
-<!-- Link to the related Confluence page -->
+<!-- 1-2 sentence summary of what this PR does -->
 
-## Jira Link
+## Confluence Documentation
 
-<!-- Link to the related Jira ticket (e.g. https://yourorg.atlassian.net/browse/SAB-XX) -->
+- **Confluence:** [<!-- page title -->](https://marloncampostech.atlassian.net/wiki/spaces/...)
+- **Jira Ticket:** [<!-- SAB-XX -->](https://marloncampostech.atlassian.net/browse/SAB-XX)
 
-## What is being done?
+## What is being done
 
-<!-- Describe clearly what this PR introduces or changes -->
+- <!-- change 1 -->
+- <!-- change 2 -->
+- <!-- change 3 -->
 
-## Why is this being done?
+## Why
 
-<!-- Explain the motivation, business reason, or technical need behind this change -->
+<!-- Motivation and business/technical reason behind this change -->
 
 ## Validation Checklist
 
-- [ ] Code follows the project's style and conventions
-- [ ] SQL queries were tested against BigQuery
-- [ ] No raw data files (`.json`, `data/raw/`) were accidentally committed
-- [ ] `requirements.txt` is up to date if new dependencies were added
-- [ ] Documentation was updated if applicable
-- [ ] PR title follows the pattern: `type/SAB-XX short description`
+- [ ] I tested the changes locally and they work as expected
+- [ ] The code follows the project structure and naming conventions
+- [ ] No sensitive data (credentials, `.json` files, `data/raw/`) is included
+- [ ] `git status` shows no untracked files that should be ignored
+- [ ] SQL scripts follow the execution order documented in `sql/README.md`
+- [ ] `requirements.txt` is updated if new dependencies were added
+- [ ] The Confluence page linked above reflects the current state of this feature
+- [ ] The Jira ticket is updated and linked to this PR
