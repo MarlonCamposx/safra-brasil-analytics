@@ -36,7 +36,7 @@ jobs:
         run: isort --check-only --diff src/ config/
 
       - name: Flake8 — verificar PEP 8
-        run: flake8 src/ config/
+        run: flake8 src/ config/ .github/scripts/
 
   lint-sql:
     name: SQL — SQLFluff
@@ -60,6 +60,7 @@ jobs:
   commitlint:
     name: Conventional Commits — validar mensagens do PR
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout código

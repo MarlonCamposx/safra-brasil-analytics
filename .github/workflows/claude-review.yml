@@ -10,6 +10,9 @@ jobs:
   claude-review:
     name: Revisão automática com Claude
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -24,10 +27,11 @@ jobs:
           cat changed_files.txt
 
       - name: Instalar dependências
-        run: pip install anthropic
+        run: pip install -r requirements-dev.txt
 
       - name: Rodar revisão Claude
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: python .github/scripts/claude_review.py

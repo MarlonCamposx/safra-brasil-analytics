@@ -10,7 +10,7 @@ module.exports = {
     ],
     // Escopos permitidos (opcional — remova se quiser escopos livres)
     "scope-enum": [
-      1,
+      2,
       "always",
       ["ingest", "staging", "gold", "dashboard", "docs", "ci", "deps", "config"],
     ],

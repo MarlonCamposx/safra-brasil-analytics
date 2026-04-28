@@ -17,7 +17,10 @@ AGENTS_DIR = Path(".github/agents")
 
 
 def load_prompt(filename: str) -> str:
-    return (AGENTS_DIR / filename).read_text()
+    path = AGENTS_DIR / filename
+    if not path.exists():
+        raise FileNotFoundError(f"Agent prompt not found: {path}")
+    return path.read_text()
 
 
 def get_changed_files() -> list[str]:
@@ -35,7 +38,7 @@ def read_file_content(filepath: str) -> str:
 
 def post_pr_comment(body: str) -> None:
     repo = os.environ["GITHUB_REPOSITORY"]
-    pr_number = os.environ["GITHUB_REF_NAME"].split("/")[0]
+    pr_number = os.environ["PR_NUMBER"]
     subprocess.run(
         ["gh", "pr", "comment", pr_number, "--body", body, "--repo", repo],
         check=True,
@@ -64,7 +67,7 @@ def review_files(
     prompt = "Revise os seguintes arquivos:\n\n" + "\n\n".join(file_contents)
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=2048,
         system=system_prompt,
         messages=[{"role": "user", "content": prompt}],
     )
