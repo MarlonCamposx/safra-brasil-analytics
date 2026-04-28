@@ -1,0 +1,99 @@
+name: Lint & Code Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-python:
+    name: Python — Black + isort + Flake8
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
+
+      - name: Instalar dependências de dev
+        run: pip install -r requirements-dev.txt
+
+      - name: Black — verificar formatação
+        run: black --check --diff src/ config/
+
+      - name: isort — verificar imports
+        run: isort --check-only --diff src/ config/
+
+      - name: Flake8 — verificar PEP 8
+        run: flake8 src/ config/ .github/scripts/
+
+  lint-sql:
+    name: SQL — SQLFluff
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar SQLFluff
+        run: pip install sqlfluff==3.0.7
+
+      - name: SQLFluff — lint das queries
+        run: sqlfluff lint sql/ --dialect bigquery
+
+  commitlint:
+    name: Conventional Commits — validar mensagens do PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar commitlint
+        run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+      - name: Validar commits do PR
+        run: |
+          npx commitlint \
+            --from ${{ github.event.pull_request.base.sha }} \
+            --to ${{ github.event.pull_request.head.sha }} \
+            --verbose
+
+  check-secrets:
+    name: Segurança — detectar credenciais expostas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks — detectar secrets no histórico
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
