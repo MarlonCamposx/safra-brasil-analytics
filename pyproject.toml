@@ -16,3 +16,9 @@ profile = "black"
 line_length = 100
 known_first_party = ["config", "src"]
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "--cov=src --cov=scripts --cov-report=term-missing --cov-fail-under=80"
