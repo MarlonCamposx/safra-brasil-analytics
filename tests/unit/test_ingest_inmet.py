@@ -1,0 +1,135 @@
+import pytest
+
+from src.ingest_inmet import _to_float, fetch_stations, normalize_stations
+
+
+class TestToFloat:
+    """Testa o helper de conversão para float."""
+
+    def test_converts_string_number(self):
+        assert _to_float("3.14") == pytest.approx(3.14)
+
+    def test_converts_comma_decimal(self):
+        assert _to_float("-15,789") == pytest.approx(-15.789)
+
+    def test_returns_none_for_none(self):
+        assert _to_float(None) is None
+
+    def test_returns_none_for_invalid_string(self):
+        assert _to_float("N/A") is None
+
+    def test_converts_int(self):
+        assert _to_float(100) == 100.0
+
+
+class TestNormalizeStations:
+    """Testa a normalização dos registros brutos da API INMET."""
+
+    def _api_records(self):
+        return [
+            {
+                "CD_ESTACAO": "A001",
+                "DC_NOME": "BRASILIA",
+                "SG_ESTADO": "DF",
+                "TP_ESTACAO": "Automatica",
+                "VL_LATITUDE": "-15.789444",
+                "VL_LONGITUDE": "-47.925833",
+                "VL_ALTITUDE": "1160.0",
+                "DT_INICIO_OPERACAO": "2000-05-13",
+                "DT_FIM_OPERACAO": None,
+                "CD_SITUACAO": "Operante",
+                "FL_CAPITAL": "Y",
+                "CD_OSCAR": "0-20000-0-86716",
+                "CD_DISTRITO": "5",
+                "SG_ENTIDADE": "INMET",
+                "CD_WSI": "0-76-0-A001",
+            },
+            {
+                "CD_ESTACAO": "B001",
+                "DC_NOME": "SAO PAULO - MIRANTE",
+                "SG_ESTADO": "SP",
+                "TP_ESTACAO": "Convencional",
+                "VL_LATITUDE": "-23.496389",
+                "VL_LONGITUDE": "-46.620278",
+                "VL_ALTITUDE": "786.0",
+                "DT_INICIO_OPERACAO": "1943-01-01",
+                "DT_FIM_OPERACAO": None,
+                "CD_SITUACAO": "Operante",
+                "FL_CAPITAL": "N",
+                "CD_OSCAR": None,
+                "CD_DISTRITO": "2",
+                "SG_ENTIDADE": "INMET",
+                "CD_WSI": None,
+            },
+        ]
+
+    def test_empty_records_returns_empty_dataframe(self):
+        df = normalize_stations([])
+        assert df.empty
+
+    def test_returns_correct_row_count(self):
+        df = normalize_stations(self._api_records())
+        assert len(df) == 2
+
+    def test_maps_station_code(self):
+        df = normalize_stations(self._api_records())
+        assert "A001" in df["cd_estacao"].values
+
+    def test_converts_latitude_to_float(self):
+        df = normalize_stations(self._api_records())
+        row = df[df["cd_estacao"] == "A001"].iloc[0]
+        assert isinstance(row["vl_latitude"], float)
+        assert row["vl_latitude"] == pytest.approx(-15.789444)
+
+    def test_none_end_date_preserved(self):
+        df = normalize_stations(self._api_records())
+        assert df["dt_fim_operacao"].isna().any()
+
+    def test_output_has_expected_columns(self):
+        df = normalize_stations(self._api_records())
+        expected = {
+            "cd_estacao",
+            "dc_nome",
+            "sg_estado",
+            "tp_estacao",
+            "vl_latitude",
+            "vl_longitude",
+            "vl_altitude",
+            "dt_inicio_operacao",
+            "dt_fim_operacao",
+            "cd_situacao",
+            "fl_capital",
+            "cd_oscar",
+            "cd_distrito",
+            "sg_entidade",
+            "cd_wsi",
+        }
+        assert expected.issubset(set(df.columns))
+
+
+class TestFetchStations:
+    """Testa a chamada à API INMET — sem chamadas reais de rede."""
+
+    def test_calls_correct_url_for_automatic(self, mocker):
+        mock_http = mocker.patch(
+            "src.ingest_inmet.http_get_json",
+            return_value=[{"CD_ESTACAO": "A001"}],
+        )
+        fetch_stations("T")
+        url_called = mock_http.call_args[0][0]
+        assert url_called.endswith("/estacoes/T")
+
+    def test_calls_correct_url_for_manual(self, mocker):
+        mock_http = mocker.patch(
+            "src.ingest_inmet.http_get_json",
+            return_value=[{"CD_ESTACAO": "B001"}],
+        )
+        fetch_stations("M")
+        url_called = mock_http.call_args[0][0]
+        assert url_called.endswith("/estacoes/M")
+
+    def test_returns_raw_records(self, mocker):
+        fake = [{"CD_ESTACAO": "A001"}, {"CD_ESTACAO": "A002"}]
+        mocker.patch("src.ingest_inmet.http_get_json", return_value=fake)
+        result = fetch_stations("T")
+        assert result == fake
