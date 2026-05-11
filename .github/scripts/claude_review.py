@@ -13,7 +13,7 @@ from pathlib import Path
 
 import anthropic
 
-AGENTS_DIR = Path(".github/agents")
+AGENTS_DIR = Path(".claude/agents")
 
 
 def load_prompt(filename: str) -> str:
