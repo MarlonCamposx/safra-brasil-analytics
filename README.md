@@ -32,6 +32,6 @@ safra-brasil-analytics/
 
 ## Links
 
-- Jira: <!-- project link -->
-- Confluence: <!-- documentation link -->
-- BigQuery Console: <!-- GCP project link -->
+- Jira: <!-- project link --> Disponível em breve
+- Confluence: <!-- documentation link --> Disponível em breve
+- BigQuery Console: <!-- GCP project link --> Disponível em breve
