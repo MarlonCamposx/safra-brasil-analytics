@@ -4,11 +4,12 @@ ingest_inmet.py
 Fonte      : INMET — API pública de estações meteorológicas
              (https://apitempo.inmet.gov.br)
 Frequência : Sob demanda (catálogo de estações atualizado periodicamente)
-Destino    : BigQuery raw.raw_weather_station
+Destino    : BigQuery raw.raw_weather_station, raw.raw_weather_measurement
 Execução   : python -m src.ingest_inmet
 
 Baixa o catálogo completo de estações meteorológicas (automáticas e
 convencionais), normaliza os campos e carrega na tabela raw do BigQuery.
+Também ingere medições históricas de precipitação por estação.
 """
 
 import pandas as pd
@@ -24,6 +25,10 @@ INMET_BASE_URL = "https://apitempo.inmet.gov.br"
 _STATION_TYPES = ["T", "M"]
 
 TABLE_ID = f"{PROJECT_ID}.raw.raw_weather_station"
+TABLE_ID_MEASUREMENTS = f"{PROJECT_ID}.raw.raw_weather_measurement"
+
+MEASUREMENTS_START_DATE = "2020-01-01"
+MEASUREMENTS_END_DATE = "2024-12-31"
 
 
 def fetch_stations(station_type: str) -> list[dict]:
@@ -91,6 +96,53 @@ def normalize_stations(records: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def fetch_measurements(cd_estacao: str, data_inicio: str, data_fim: str) -> list[dict]:
+    """Consulta a API INMET e retorna as medições históricas de uma estação.
+
+    Args:
+        cd_estacao: Código da estação meteorológica (ex: 'A001').
+        data_inicio: Data de início no formato 'YYYY-MM-DD'.
+        data_fim: Data de fim no formato 'YYYY-MM-DD'.
+
+    Returns:
+        Lista de dicts com os registros de medição da estação.
+
+    Raises:
+        requests.HTTPError: Se a resposta HTTP não for 2xx.
+    """
+    url = f"{INMET_BASE_URL}/estacao/historico/{data_inicio}/{data_fim}/{cd_estacao}"
+    logger.info("Buscando medições da estação %s (%s a %s)...", cd_estacao, data_inicio, data_fim)
+    records = http_get_json(url)
+    logger.info("%d medições recebidas para estação %s.", len(records), cd_estacao)
+    return records
+
+
+def normalize_measurements(records: list[dict]) -> pd.DataFrame:
+    """Normaliza os registros brutos de medição da API INMET em um DataFrame flat.
+
+    Args:
+        records: Lista de dicts retornada pelo endpoint /estacao/historico/.
+
+    Returns:
+        DataFrame com colunas: cd_estacao, measurement_date, precip_mm.
+        Retorna DataFrame vazio se records for vazio.
+    """
+    if not records:
+        return pd.DataFrame()
+
+    rows = []
+    for rec in records:
+        rows.append(
+            {
+                "cd_estacao": rec.get("CD_ESTACAO"),
+                "measurement_date": rec.get("DT_MEDICAO"),
+                "precip_mm": _to_float(rec.get("CHUVA")),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
 def _to_float(value) -> float | None:
     """Converte um valor de string para float, retornando None em caso de falha.
 
@@ -109,7 +161,7 @@ def _to_float(value) -> float | None:
 
 
 def main() -> None:
-    """Executa a ingestão do catálogo de estações INMET para o BigQuery."""
+    """Executa a ingestão do catálogo de estações e medições históricas do INMET."""
     all_dfs = []
     for station_type in _STATION_TYPES:
         records = fetch_stations(station_type)
@@ -117,10 +169,25 @@ def main() -> None:
         logger.info("Tipo %s: %d estações normalizadas.", station_type, len(df))
         all_dfs.append(df)
 
-    df_combined = pd.concat(all_dfs, ignore_index=True)
-    logger.info("Total de estações a carregar: %d", len(df_combined))
-    upload_to_bigquery(df_combined, TABLE_ID)
+    df_stations = pd.concat(all_dfs, ignore_index=True)
+    logger.info("Total de estações a carregar: %d", len(df_stations))
+    upload_to_bigquery(df_stations, TABLE_ID)
     logger.info("Carga concluída em %s.", TABLE_ID)
+
+    all_measurements = []
+    for cd_estacao in df_stations["cd_estacao"].dropna().unique():
+        records = fetch_measurements(cd_estacao, MEASUREMENTS_START_DATE, MEASUREMENTS_END_DATE)
+        df = normalize_measurements(records)
+        if not df.empty:
+            all_measurements.append(df)
+
+    if all_measurements:
+        df_measurements = pd.concat(all_measurements, ignore_index=True)
+        logger.info("Total de medições a carregar: %d", len(df_measurements))
+        upload_to_bigquery(df_measurements, TABLE_ID_MEASUREMENTS)
+        logger.info("Carga concluída em %s.", TABLE_ID_MEASUREMENTS)
+    else:
+        logger.warning("Nenhuma medição retornada pela API.")
 
 
 if __name__ == "__main__":

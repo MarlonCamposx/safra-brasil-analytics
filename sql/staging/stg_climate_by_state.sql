@@ -1,19 +1,14 @@
 -- =============================================================
 -- stg_climate_by_state.sql
 -- Camada: staging
--- Origem: raw.raw_weather_station
+-- Origem: raw.raw_weather_station, raw.raw_weather_measurement
 -- Destino: staging.stg_climate_by_state
 --
 -- Transformações aplicadas:
 --   - Padroniza sigla de UF (UPPER + TRIM de sg_estado)
 --   - Extrai o ano de início de operação de cada estação
 --   - Agrega número de estações meteorológicas ativas por estado e ano
---
--- NOTA: Agregação de precipitação pluviométrica por estado/ano requer
---   dados de medição histórica da API INMET (endpoint /historico).
---   O ingest_inmet.py atual carrega apenas o catálogo de estações.
---   Quando o script for expandido para ingerir medições, substituir
---   a agregação de contagem pela média de precipitação anual.
+--   - Calcula média anual de precipitação por estado (avg_precip_mm)
 -- =============================================================
 
 CREATE OR REPLACE TABLE `safra-brasil-analytics.staging.stg_climate_by_state` AS
@@ -47,16 +42,40 @@ with_year AS (
     WHERE
         dt_inicio_operacao IS NOT NULL
         AND LENGTH(dt_inicio_operacao) >= 4
+),
+
+station_agg AS (
+    SELECT
+        state_code,
+        operation_start_year AS year,
+        COUNT(cd_estacao) AS station_count,
+        -- Filtra por tipo para distinguir cobertura automática da convencional
+        COUNTIF(tp_estacao = 'T') AS automatic_stations,
+        COUNTIF(tp_estacao = 'M') AS manual_stations,
+        COUNTIF(cd_situacao = 'Ativa') AS active_stations
+    FROM with_year
+    WHERE operation_start_year IS NOT NULL
+    GROUP BY state_code, year
+),
+
+measurements AS (
+    SELECT
+        s.state_code,
+        SAFE_CAST(LEFT(m.measurement_date, 4) AS INT64) AS year,
+        AVG(m.precip_mm) AS avg_precip_mm
+    FROM `safra-brasil-analytics.raw.raw_weather_measurement` AS m
+    INNER JOIN source AS s ON m.cd_estacao = s.cd_estacao
+    WHERE m.precip_mm IS NOT NULL
+    GROUP BY s.state_code, year
 )
 
 SELECT
-    state_code,
-    operation_start_year AS year,
-    COUNT(cd_estacao) AS station_count,
-    -- Filtra por tipo para distinguir cobertura automática da convencional
-    COUNTIF(tp_estacao = 'T') AS automatic_stations,
-    COUNTIF(tp_estacao = 'M') AS manual_stations,
-    COUNTIF(cd_situacao = 'Ativa') AS active_stations
-FROM with_year
-WHERE operation_start_year IS NOT NULL
-GROUP BY state_code, year
+    sa.state_code,
+    sa.year,
+    sa.station_count,
+    sa.automatic_stations,
+    sa.manual_stations,
+    sa.active_stations,
+    m.avg_precip_mm
+FROM station_agg AS sa
+LEFT JOIN measurements AS m ON sa.state_code = m.state_code AND sa.year = m.year
