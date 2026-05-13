@@ -6,11 +6,7 @@
 --
 -- Transformações aplicadas:
 --   - Tabela fato de clima anual, combinando cobertura de estações meteorológicas
---     com dimensões de estado e tempo
---
--- LIMITAÇÃO: avg_precip_mm (média de precipitação anual por estado) não está disponível
---   pois ingest_inmet.py carrega apenas o catálogo de estações, não medições históricas.
---   Quando o script for expandido para ingerir medições, adicionar avg_precip_mm aqui.
+--     e precipitação média anual por estado com dimensões de estado e tempo
 -- =============================================================
 
 CREATE OR REPLACE TABLE `safra-brasil-analytics.gold.fct_annual_climate` AS
@@ -23,7 +19,8 @@ stg_climate AS (
         station_count,
         automatic_stations,
         manual_stations,
-        active_stations
+        active_stations,
+        avg_precip_mm
     FROM `safra-brasil-analytics.staging.stg_climate_by_state`
 ),
 
@@ -51,7 +48,8 @@ SELECT
     sc.station_count,
     sc.automatic_stations,
     sc.manual_stations,
-    sc.active_stations
+    sc.active_stations,
+    sc.avg_precip_mm
 FROM stg_climate AS sc
 INNER JOIN dim_time AS dt ON sc.year = dt.year
 INNER JOIN dim_state AS ds ON sc.state_code = ds.state_code

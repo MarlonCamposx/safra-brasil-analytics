@@ -1,6 +1,12 @@
 import pytest
 
-from src.ingest_inmet import _to_float, fetch_stations, normalize_stations
+from src.ingest_inmet import (
+    _to_float,
+    fetch_measurements,
+    fetch_stations,
+    normalize_measurements,
+    normalize_stations,
+)
 
 
 class TestToFloat:
@@ -133,3 +139,75 @@ class TestFetchStations:
         mocker.patch("src.ingest_inmet.http_get_json", return_value=fake)
         result = fetch_stations("T")
         assert result == fake
+
+
+class TestNormalizeMeasurements:
+    """Testa a normalização dos registros de medição da API INMET."""
+
+    def _api_records(self):
+        return [
+            {
+                "CD_ESTACAO": "A001",
+                "DT_MEDICAO": "2022-07-10",
+                "CHUVA": "12.4",
+            },
+            {
+                "CD_ESTACAO": "A001",
+                "DT_MEDICAO": "2022-07-11",
+                "CHUVA": None,
+            },
+        ]
+
+    def test_empty_records_returns_empty_dataframe(self):
+        df = normalize_measurements([])
+        assert df.empty
+
+    def test_returns_correct_row_count(self):
+        df = normalize_measurements(self._api_records())
+        assert len(df) == 2
+
+    def test_output_has_expected_columns(self):
+        df = normalize_measurements(self._api_records())
+        expected = {"cd_estacao", "measurement_date", "precip_mm"}
+        assert expected.issubset(set(df.columns))
+
+    def test_converts_precip_to_float(self):
+        df = normalize_measurements(self._api_records())
+        row = df[df["measurement_date"] == "2022-07-10"].iloc[0]
+        assert isinstance(row["precip_mm"], float)
+        assert row["precip_mm"] == pytest.approx(12.4)
+
+    def test_none_precip_preserved_as_null(self):
+        df = normalize_measurements(self._api_records())
+        assert df["precip_mm"].isna().any()
+
+    def test_maps_station_code(self):
+        df = normalize_measurements(self._api_records())
+        assert "A001" in df["cd_estacao"].values
+
+
+class TestFetchMeasurements:
+    """Testa a chamada ao endpoint de medições históricas — sem chamadas reais de rede."""
+
+    def test_calls_correct_url(self, mocker):
+        mock_http = mocker.patch(
+            "src.ingest_inmet.http_get_json",
+            return_value=[{"CD_ESTACAO": "A001"}],
+        )
+        fetch_measurements("A001", "2022-01-01", "2022-12-31")
+        url_called = mock_http.call_args[0][0]
+        assert "historico" in url_called
+        assert "A001" in url_called
+        assert "2022-01-01" in url_called
+        assert "2022-12-31" in url_called
+
+    def test_returns_raw_records(self, mocker):
+        fake = [{"CD_ESTACAO": "A001", "DT_MEDICAO": "2022-07-10", "CHUVA": "5.0"}]
+        mocker.patch("src.ingest_inmet.http_get_json", return_value=fake)
+        result = fetch_measurements("A001", "2022-01-01", "2022-12-31")
+        assert result == fake
+
+    def test_returns_empty_list_when_api_returns_nothing(self, mocker):
+        mocker.patch("src.ingest_inmet.http_get_json", return_value=[])
+        result = fetch_measurements("A001", "2022-01-01", "2022-12-31")
+        assert result == []
