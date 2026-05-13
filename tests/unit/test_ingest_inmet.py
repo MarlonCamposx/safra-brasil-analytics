@@ -1,9 +1,13 @@
+import pandas as pd
 import pytest
 
 from src.ingest_inmet import (
+    TABLE_ID,
+    TABLE_ID_MEASUREMENTS,
     _to_float,
     fetch_measurements,
     fetch_stations,
+    main,
     normalize_measurements,
     normalize_stations,
 )
@@ -211,3 +215,69 @@ class TestFetchMeasurements:
         mocker.patch("src.ingest_inmet.http_get_json", return_value=[])
         result = fetch_measurements("A001", "2022-01-01", "2022-12-31")
         assert result == []
+
+
+class TestMain:
+    """Testa a orquestração do pipeline de ingestão INMET."""
+
+    def _fake_station_df(self):
+        return pd.DataFrame(
+            [
+                {
+                    "cd_estacao": "A001",
+                    "dc_nome": "BRASILIA",
+                    "sg_estado": "DF",
+                    "tp_estacao": "Automatica",
+                    "vl_latitude": -15.79,
+                    "vl_longitude": -47.93,
+                    "vl_altitude": 1160.0,
+                    "dt_inicio_operacao": "2000-05-13",
+                    "dt_fim_operacao": None,
+                    "cd_situacao": "Operante",
+                    "fl_capital": "Y",
+                    "cd_oscar": None,
+                    "cd_distrito": "5",
+                    "sg_entidade": "INMET",
+                    "cd_wsi": None,
+                }
+            ]
+        )
+
+    def test_uploads_stations_and_measurements(self, mocker):
+        fake_station_df = self._fake_station_df()
+        fake_measurement_df = pd.DataFrame(
+            [
+                {
+                    "cd_estacao": "A001",
+                    "measurement_date": "2022-07-10",
+                    "precip_mm": 12.4,
+                }
+            ]
+        )
+
+        mocker.patch("src.ingest_inmet.fetch_stations", return_value=[])
+        mocker.patch("src.ingest_inmet.normalize_stations", return_value=fake_station_df)
+        mocker.patch("src.ingest_inmet.fetch_measurements", return_value=[{}])
+        mocker.patch("src.ingest_inmet.normalize_measurements", return_value=fake_measurement_df)
+        mock_upload = mocker.patch("src.ingest_inmet.upload_to_bigquery")
+
+        main()
+
+        assert mock_upload.call_count == 2
+        uploaded_tables = [call[0][1] for call in mock_upload.call_args_list]
+        assert TABLE_ID in uploaded_tables
+        assert TABLE_ID_MEASUREMENTS in uploaded_tables
+
+    def test_skips_measurement_upload_when_none_returned(self, mocker):
+        fake_station_df = self._fake_station_df()
+
+        mocker.patch("src.ingest_inmet.fetch_stations", return_value=[])
+        mocker.patch("src.ingest_inmet.normalize_stations", return_value=fake_station_df)
+        mocker.patch("src.ingest_inmet.fetch_measurements", return_value=[])
+        mocker.patch("src.ingest_inmet.normalize_measurements", return_value=pd.DataFrame())
+        mock_upload = mocker.patch("src.ingest_inmet.upload_to_bigquery")
+
+        main()
+
+        assert mock_upload.call_count == 1
+        assert mock_upload.call_args[0][1] == TABLE_ID
